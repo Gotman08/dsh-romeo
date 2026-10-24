@@ -2,7 +2,7 @@
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh), DeepSeek's coding agent, on your computer, with its model, DeepSeek-V4.1-Flash, running on the GPUs of the [ROMEO](https://romeo.univ-reims.fr/) cluster. One command starts the model, opens the tunnel and opens dsh.
 
-![dsh-romeo launches DeepSeek-V4.1-Flash on ROMEO, then dsh fixes a failing test on the laptop](img/dsh-romeo.gif)
+![dsh-romeo --launch starts DeepSeek-V4.1-Flash on ROMEO and opens the dsh Web UI, where an agent fixes a failing test; then the Trajectory tab of that session](img/dsh-romeo.gif)
 
 ## Install
 
@@ -35,7 +35,7 @@ Host romeo
 | `dsh-romeo --status` | the gateway, the model jobs, the tunnel |
 | `dsh-romeo --stop` | stops the model jobs and closes the tunnel |
 
-The agents work on your computer, in the folder where you start dsh: only the model runs on ROMEO.
+The agents work on your computer: only the model runs on ROMEO. In the Web UI, a session works in the workspace chosen above the message box: on first use dsh creates `~/Documents/deepseek-harness/default-workspace`; add your project folder with the button next to *Workspaces*. `dsh-romeo headless` works in the current folder.
 
 ## What it does
 
@@ -76,8 +76,8 @@ A model job uses the GPU hours of your project for as long as it runs, even when
 
 ```bash
 tests/run.sh                 # offline tests against a fake ROMEO (fake ssh, romeollmtool, squeue, gateway)
-python3 tests/demo.py record # records a real run for the GIF (launches a model job), then:
-python3 tests/demo.py render # draws img/dsh-romeo.gif
+python tests/demo.py record  # records a real run for the GIF (launches a model job): terminal, then the Web UI
+python tests/demo.py render  # draws img/dsh-romeo.gif
 ```
 
-`tests/tui.py` (driving a program in a pseudo-terminal and drawing its screen) comes from [RSV](https://github.com/wolf75222/RSV).
+The demo needs `pyte`, `Pillow` and `playwright` (`python -m playwright install chromium`). `tests/tui.py` (driving a program in a pseudo-terminal and drawing its screen) comes from [RSV](https://github.com/wolf75222/RSV).

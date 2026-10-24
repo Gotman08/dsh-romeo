@@ -1,0 +1,347 @@
+#!/usr/bin/env bash
+# dsh-romeo: DeepSeek Harness (dsh) on your computer, DeepSeek-V4.1-Flash on ROMEO's GPUs.
+#
+#   dsh-romeo                     open the dsh Web UI (every dsh profile and argument passes through:
+#   dsh-romeo headless "a task"     dsh-romeo web --port 3000, dsh-romeo headless "...")
+#   dsh-romeo --launch [N]        submit N model jobs (default 1), wait for the model, then open dsh
+#   dsh-romeo --status            gateway, model jobs, tunnel
+#   dsh-romeo --stop              cancel the model jobs of dsh-romeo's fiche, close the tunnel
+#   dsh-romeo --setup             copy the model fiche to ROMEO again (after an update)
+#   dsh-romeo --version | --help
+#
+# What it does: keeps the romeollmtool gateway running on the ROMEO login node, launches the
+# model with romeollmtool when asked, opens one SSH connection that carries a tunnel
+# 127.0.0.1:$DSH_ROMEO_PORT -> gateway, then runs dsh with an overlay (--patch) that adds a
+# "romeo" provider and makes it the default model. Your own dsh profiles are not modified.
+#
+# Settings: ~/.config/dsh-romeo/config (written by install.sh). A variable set in the
+# environment wins over the file.
+set -euo pipefail
+
+VERSION=0.1.0
+
+# The repository this script lives in (it is usually reached through a symlink).
+src=$0
+while [ -L "$src" ]; do
+  dir=$(cd "$(dirname "$src")" && pwd)
+  src=$(readlink "$src")
+  case $src in /*) ;; *) src=$dir/$src ;; esac
+done
+ROOT=$(cd "$(dirname "$src")/.." && pwd)
+
+CONFIG_DIR=${DSH_ROMEO_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/dsh-romeo}
+# shellcheck source=/dev/null
+[ -f "$CONFIG_DIR/config" ] && . "$CONFIG_DIR/config"
+: "${ROMEO_SSH_HOST:=romeo}"                             # ssh alias of a ROMEO login node
+: "${ROMEO_PROJECT:=}"                                   # Slurm project code charged for the model jobs
+: "${DSH_ROMEO_FICHE:=dsh-deepseek-v4.1-flash-1m}"       # romeollmtool fiche of the model
+: "${DSH_ROMEO_TIME:=08:00:00}"                          # model job duration (max 24:00:00)
+: "${DSH_ROMEO_PORT:=11318}"                             # local end of the tunnel
+: "${DSH_ROMEO_EFFORT:=max}"                             # default reasoning effort: none, low, high, max
+: "${DSH_ROMEO_SEARXNG_URL:=}"                           # SearXNG for web search, e.g. http://127.0.0.1:8888
+: "${ROMEOLLMTOOL:=/apps/romeotools/romeollmtool/romeollmtool}"
+
+HOST=$ROMEO_SSH_HOST
+FICHE=$DSH_ROMEO_FICHE
+PORT=$DSH_ROMEO_PORT
+# Control socket of the shared SSH connection (Unix socket paths are limited to ~100 bytes).
+CTL=${DSH_ROMEO_SOCKET:-$HOME/.ssh/dsh-romeo-$HOST.sock}
+OVERLAY=$CONFIG_DIR/dsh.patch.yml
+
+if [ -t 1 ]; then B=$'\e[1m' D=$'\e[2m' G=$'\e[32m' Y=$'\e[33m' R=$'\e[31m' N=$'\e[0m'; else B='' D='' G='' Y='' R='' N=''; fi
+say() { printf '%s\n' "${B}dsh-romeo${N} $*"; }
+note() { printf '%s\n' "          ${D}$*${N}"; }
+die() { printf '%s\n' "${R}dsh-romeo:${N} $*" >&2; exit 1; }
+
+usage() { sed -n '2,10p' "$src" | sed 's/^# \{0,1\}//'; }
+
+# ---------------------------------------------------------------- SSH
+
+# OpenSSH 10 warns about every server without post-quantum key exchange: noise here.
+quiet() { grep -v -E 'post-quantum|store now, decrypt later|openssh.com/pq|^\*\* ' >&2 || true; }
+
+connect() {  # one connection, reused by every command and carrying the tunnel
+  mkdir -p "$(dirname "$CTL")"
+  ssh -S "$CTL" -O check "$HOST" 2>/dev/null && return 0
+  rm -f "$CTL"
+  ssh -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=4 \
+      -o ExitOnForwardFailure=yes -M -S "$CTL" -f -N "$HOST" 2> >(quiet) \
+    || die "cannot connect to '$HOST' over SSH. Check that 'ssh $HOST' works without a password (README: Install)."
+}
+
+rsh() { ssh -n -S "$CTL" -o BatchMode=yes "$HOST" "$@" 2> >(quiet); }      # stdin stays yours
+rsh_stdin() { ssh -S "$CTL" -o BatchMode=yes "$HOST" "$@" 2> >(quiet); }   # stdin goes to ROMEO
+
+disconnect() { ssh -S "$CTL" -O exit "$HOST" 2>/dev/null || true; }
+
+# ---------------------------------------------------------------- ROMEO
+
+rlt() { rsh "$ROMEOLLMTOOL $*"; }
+
+gateway_url() {  # the gateway's URL, empty when it is not running
+  rlt gateway status 2>/dev/null | grep -oE 'https?://[^ ]+:[0-9]+/v1' | head -1 || true
+}
+
+ensure_gateway() {
+  local url
+  url=$(gateway_url)
+  if [ -z "$url" ]; then
+    say "starting the romeollmtool gateway on ROMEO"
+    rlt gateway start --hours 24 >/dev/null || die "romeollmtool gateway start failed (try: ssh $HOST $ROMEOLLMTOOL doctor)"
+    url=$(gateway_url)
+    [ -n "$url" ] || die "the gateway did not start (ssh $HOST $ROMEOLLMTOOL gateway logs)"
+  else
+    # Its automatic stop would also cancel the model jobs: push it 24 h away.
+    rlt gateway extend --hours 24 >/dev/null 2>&1 || true
+  fi
+  GATEWAY=$url
+}
+
+# The fiche as romeollmtool will launch it: served model name, context and output limits.
+read_fiche() {
+  local show
+  show=$(rlt catalog show "$FICHE" 2>/dev/null) || true
+  printf '%s\n' "$show" | grep -q '^vllm:' \
+    || die "fiche '$FICHE' not found on ROMEO. Run: dsh-romeo --setup"
+  eval "$(printf '%s\n' "$show" | awk '
+    /^vllm:/ { v = 1; next }
+    /^generation:/ { g = 1; next }
+    /^[^ -]/ { v = 0; g = 0 }
+    v && /^  served_model_name:/ { served = $2 }
+    v && /^  model:/ { model = $2 }
+    v && /--max-model-len/ { getline; gsub(/[^0-9]/, ""); ctx = $0 }
+    g && /^  max_tokens:/ { out = $2 }
+    END {
+      name = served != "" ? served : model
+      gsub(/["\047]/, "", name); gsub(/["\047]/, "", out)
+      printf "MODEL=%s CONTEXT=%s MAX_TOKENS=%s\n", name, ctx + 0 ? ctx : 262144, out + 0 ? out : 65536
+    }')"
+  [ -n "$MODEL" ] || die "cannot read the served model name of fiche '$FICHE'"
+}
+
+jobs_of_fiche() {  # "jobid state elapsed left reason" for each model job of the fiche
+  rsh "squeue -u \$USER -h -n romeollmtool-$FICHE -o '%i %T %M %L %r'" || true
+}
+
+launch_jobs() {
+  local n=$1 out
+  [ -n "$ROMEO_PROJECT" ] || die "no project code: set ROMEO_PROJECT in $CONFIG_DIR/config (rerun install.sh)"
+  for _ in $(seq 1 "$n"); do
+    out=$(rlt launch "$FICHE" --project-code "$ROMEO_PROJECT" --time "$DSH_ROMEO_TIME" --no-wait 2>&1) \
+      || { printf '%s\n' "$out" >&2; die "romeollmtool launch failed"; }
+    say "model job $(printf '%s\n' "$out" | grep -oE '[0-9]{5,}' | head -1) submitted ($FICHE, $DSH_ROMEO_TIME)"
+  done
+}
+
+# ---------------------------------------------------------------- tunnel and model
+
+open_tunnel() {
+  local target=${GATEWAY#*://}
+  target=${target%/v1}
+  probe_models >/dev/null 2>&1 && return 0
+  ssh -S "$CTL" -O cancel -L "$PORT:$target" "$HOST" 2>/dev/null || true
+  ssh -S "$CTL" -O forward -L "$PORT:$target" "$HOST" 2>/dev/null \
+    || die "cannot forward 127.0.0.1:$PORT (another program uses it? set DSH_ROMEO_PORT)"
+}
+
+probe_models() {  # the gateway's model list, through the tunnel
+  curl -sf -m 10 "http://127.0.0.1:$PORT/v1/models" -H "Authorization: Bearer $ROMEO_LLM_KEY"
+}
+
+model_answers() {  # a one-token completion: the model is loaded and serving
+  local code
+  code=$(curl -s -o /dev/null -m 60 -w '%{http_code}' "http://127.0.0.1:$PORT/v1/chat/completions" \
+    -H "Authorization: Bearer $ROMEO_LLM_KEY" -H 'Content-Type: application/json' \
+    -d "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"max_tokens\":1,\"reasoning_effort\":\"none\"}" || true)
+  [ "$code" = 200 ]
+}
+
+wait_for_model() {
+  local start jobs line shown='' width
+  start=$(date +%s)
+  while ! model_answers; do
+    jobs=$(jobs_of_fiche)
+    [ -n "$jobs" ] || die "no model job left (it ended or failed): ssh $HOST $ROMEOLLMTOOL logs"
+    line=$(waiting_line "$jobs" $(( $(date +%s) - start )))
+    if [ -t 1 ]; then  # one line, rewritten in place: never wider than the terminal
+      width=$(tput cols 2>/dev/null || echo 100)
+      line=${line:0:$((width - 11))}
+      printf '\r\033[K%s %s' "${B}dsh-romeo${N}" "${D}$line${N}"
+    elif [ "${line%% · [0-9]*}" != "$shown" ]; then
+      say "$line"
+      shown=${line%% · [0-9]*}
+    fi
+    sleep "${DSH_ROMEO_POLL:-15}"
+  done
+  if [ -t 1 ]; then printf '\r\033[K'; fi
+}
+
+waiting_line() {  # $1: the jobs, $2: seconds waited
+  local what="loading the model on ROMEO"
+  grep -q ' RUNNING ' <<<"$1" || what="waiting for GPUs on ROMEO"
+  printf '%s · %s · %d min %02d s · Ctrl-C stops waiting, not the job' "$what" "$(summary "$1")" $(($2 / 60)) $(($2 % 60))
+}
+
+summary() {  # one line for the jobs: "job 123 running 4:10" or "job 123 pending (Resources)"
+  printf '%s\n' "$1" | awk '{
+    s = tolower($2); line = "job " $1 " " s
+    if (s == "running") line = line " " $3; else if ($5 != "None") line = line " (" $5 ")"
+    printf "%s%s", (NR > 1 ? ", " : ""), line }'
+}
+
+# ---------------------------------------------------------------- dsh
+
+write_overlay() {
+  mkdir -p "$CONFIG_DIR"
+  {
+    cat <<YAML
+# Written by dsh-romeo at every start: edit $CONFIG_DIR/config instead.
+# Adds the "romeo" provider (DeepSeek-V4.1-Flash on ROMEO, through the SSH tunnel) and makes it
+# the default model. The API key comes from the ROMEO_LLM_KEY environment variable.
+- id: llm-pi-ai
+  config:
+    providers:
+      romeo:
+        displayName: ROMEO
+        apiKeyEnv: ROMEO_LLM_KEY
+        api: openai-completions
+        baseURL: http://127.0.0.1:$PORT/v1
+        compat:
+          supportsDeveloperRole: false
+          supportsStore: false
+          maxTokensField: max_tokens
+        reasoning: $DSH_ROMEO_EFFORT
+        streamIdleTimeoutMs: 600000
+        models:
+          - id: $MODEL
+            name: DeepSeek-V4.1-Flash (ROMEO)
+            contextWindow: $CONTEXT
+            maxTokens: $MAX_TOKENS
+            input: [ text ]
+            reasoningEfforts: { off: none, low: low, high: high, max: max }
+- id: agent-default-model
+  config:
+    provider: romeo
+    model: $MODEL
+    reasoningEffort: $DSH_ROMEO_EFFORT
+YAML
+    if [ -n "$DSH_ROMEO_SEARXNG_URL" ]; then
+      cat <<YAML
+# Web search through SearXNG (DSH_ROMEO_SEARXNG_URL).
+- id: web
+  config:
+    searchProvider: dsh-romeo-searxng
+    fetchProvider: http
+- id: tool-web
+  disabled: false
+- insert:
+    - id: dsh-romeo-searxng
+      name: $ROOT/share/web-search-searxng.mjs
+      config:
+        providerId: dsh-romeo-searxng
+        baseURL: "$DSH_ROMEO_SEARXNG_URL"
+YAML
+    fi
+  } >"$OVERLAY.tmp"
+  mv "$OVERLAY.tmp" "$OVERLAY"
+}
+
+run_dsh() {
+  command -v "${DSH_ROMEO_DSH:-dsh}" >/dev/null || die "dsh is not installed: npm install -g @deepseek-ai/dsh"
+  write_overlay
+  local profile=${1:-web}
+  [ $# -gt 0 ] && shift
+  export ROMEO_LLM_KEY
+  exec "${DSH_ROMEO_DSH:-dsh}" "$profile" --patch "$OVERLAY" "$@"
+}
+
+# ---------------------------------------------------------------- commands
+
+cmd_status() {
+  connect
+  local url jobs
+  url=$(gateway_url)
+  if [ -n "$url" ]; then say "gateway ${G}running${N} $url"; else say "gateway ${Y}stopped${N}"; fi
+  jobs=$(jobs_of_fiche)
+  if [ -n "$jobs" ]; then
+    printf '%s\n' "$jobs" | while read -r id st el left _; do
+      say "model job $id $(printf '%s' "$st" | tr 'A-Z' 'a-z') ${D}elapsed $el, left $left${N}"
+    done
+  else
+    say "no model job of $FICHE ${D}(dsh-romeo --launch)${N}"
+  fi
+  if curl -s -m 3 -o /dev/null "http://127.0.0.1:$PORT/v1/models"; then
+    say "tunnel ${G}open${N} 127.0.0.1:$PORT"
+  else
+    say "tunnel closed"
+  fi
+}
+
+cmd_stop() {
+  connect
+  local jobs id
+  jobs=$(jobs_of_fiche)
+  if [ -z "$jobs" ]; then
+    say "no model job of $FICHE"
+  else
+    for id in $(printf '%s\n' "$jobs" | awk '{print $1}'); do
+      rlt stop "$id" </dev/null >/dev/null 2>&1 || rsh "scancel $id"
+      say "model job $id stopped"
+    done
+  fi
+  disconnect
+  say "tunnel closed ${D}(the gateway keeps running; it stops by itself)${N}"
+}
+
+cmd_setup() {
+  connect
+  rsh "mkdir -p ~/.romeollmtool/configs"
+  for f in "$ROOT"/share/fiches/*.yaml; do
+    rsh_stdin "cat > ~/.romeollmtool/configs/$(basename "$f")" <"$f"
+    say "fiche $(basename "$f" .yaml) installed in ~/.romeollmtool/configs on ROMEO"
+  done
+  rlt version >/dev/null 2>&1 || die "romeollmtool not found at $ROMEOLLMTOOL on ROMEO"
+}
+
+cmd_start() {  # $1: jobs to launch first; the rest goes to dsh
+  local launch=$1 jobs
+  shift
+  connect
+  ensure_gateway
+  read_fiche
+  jobs=$(jobs_of_fiche)
+  if [ "$launch" -gt 0 ]; then
+    launch_jobs "$launch"
+    jobs=$(jobs_of_fiche)
+  fi
+  ROMEO_LLM_KEY=$(rlt gateway show-key | tr -d '[:space:]')
+  [ -n "$ROMEO_LLM_KEY" ] || die "cannot read the gateway key"
+  open_tunnel
+  if ! model_answers; then
+    [ -n "$jobs" ] || die "no $FICHE model job on ROMEO. Start one with: dsh-romeo --launch"
+    note "the model loads in about 10 min once the job runs; the queue can add more"
+    wait_for_model
+  fi
+  say "DeepSeek-V4.1-Flash ${G}ready${N} ${D}($MODEL, http://127.0.0.1:$PORT/v1)${N}"
+  run_dsh "$@"
+}
+
+main() {
+  local launch=0
+  case "${1:-}" in
+    -h|--help) usage; exit 0 ;;
+    -V|--version) echo "dsh-romeo $VERSION"; exit 0 ;;
+    --status) cmd_status; exit 0 ;;
+    --stop) cmd_stop; exit 0 ;;
+    --setup) cmd_setup; exit 0 ;;
+    --launch)
+      shift
+      launch=1
+      if [[ "${1:-}" =~ ^[0-9]+$ ]]; then launch=$1; shift; fi
+      [ "$launch" -ge 1 ] && [ "$launch" -le 8 ] || die "--launch takes 1 to 8 jobs"
+      ;;
+  esac
+  cmd_start "$launch" "$@"
+}
+
+main "$@"

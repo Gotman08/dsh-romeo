@@ -1,0 +1,80 @@
+# ==============================================================================
+# DeepSeek-V4.1-Flash for DeepSeek Harness: vLLM, 2 nodes (8 GH200), 1M context
+# ==============================================================================
+# romeollmtool fiche installed by dsh-romeo in ~/.romeollmtool/configs.
+#
+# Same model and engine as the catalog fiche deepseek-v4.1-flash-vllm (1 node,
+# 262K context), tuned for coding agents:
+# - tensor parallelism over 8 GPUs on 2 nodes, no pipeline parallelism (the
+#   pipeline variants of V4.1 on vLLM 0.31 corrupt long agent contexts);
+# - the full 1,048,576-token context and 256K tokens of output;
+# - DSpark speculative decoding (3 draft tokens);
+# - 32 CPUs per node and --stream-interval 4 for many agents at once.
+# Measured on ROMEO (October 2026): about 500 agents at once at 30 tokens/s
+# each on 7 replicas (one job = one replica).
+#
+# gpu-memory-utilization 0.78: on GH200 only 77-80 GiB are sometimes free at
+# start (host pages on the HBM); 0.85 then fails.
+# --language-model-only: text only, and it keeps the memory profiling at 1M
+# away from the vision path.
+# DeepSeek's sampling: temperature 1.0, top_p 0.95.
+# ==============================================================================
+
+id: dsh-deepseek-v4.1-flash-1m
+display_name: "DeepSeek-V4.1-Flash for dsh, 2 nodes TP8 + DSpark, 1M context"
+verified: experimental
+verified_note: "tuned for DeepSeek Harness agents (dsh-romeo)"
+engine: vllm
+license: "MIT"
+license_usage: open
+category: [general, reasoning, tools, long-context, moe]
+
+env:
+  NCCL_IB_HCA: "mlx5_0,mlx5_1,mlx5_2,mlx5_3"
+  NCCL_SOCKET_IFNAME: "ibp3s0"
+  GLOO_SOCKET_IFNAME: "ibp3s0"
+  PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
+  VLLM_USE_BREAKABLE_CUDAGRAPH: "0"
+  RAY_memory_monitor_refresh_ms: "0"
+  # TP8 across 2 nodes: no NVLink between nodes, plain NCCL over InfiniBand.
+  NCCL_MNNVL_ENABLE: "0"
+  NCCL_NVLS_ENABLE: "0"
+  VLLM_ALLREDUCE_USE_FLASHINFER: "0"
+  VLLM_ALLREDUCE_USE_SYMM_MEM: "0"
+
+slurm:
+  time: "24:00:00"
+  nodes: 2
+  gpus: 4
+  cpus: 32
+  memory: "750G"
+  constraint: "armgpu"
+  reservation: ""
+
+vllm:
+  version: "0.31.0"
+  model: "deepseek-ai/DeepSeek-V4.1-Flash"
+  served_model_name: "dsh-deepseek-v4.1-flash-1m"
+  tensor_parallel_size: 8
+  pipeline_parallel_size: 1
+  extra_args:
+    - "--disable-custom-all-reduce"
+    - "--language-model-only"
+    - "--gpu-memory-utilization"
+    - "0.78"
+    - "--max-model-len"
+    - "1048576"
+    - "--enable-auto-tool-choice"
+    - "--tool-call-parser"
+    - "deepseek_v41"
+    - "--reasoning-parser"
+    - "deepseek_v41"
+    - "--stream-interval"
+    - "4"
+    - "--speculative-config"
+    - '{"method":"dspark","num_speculative_tokens":3}'
+
+generation:
+  temperature: 1.0
+  top_p: 0.95
+  max_tokens: 262144

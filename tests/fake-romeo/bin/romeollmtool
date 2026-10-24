@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Fake romeollmtool: gateway, catalog show, launch, stop; jobs live in $FAKE_ROMEO_STATE/jobs.
+set -u
+S=$FAKE_ROMEO_STATE
+case "$1 ${2:-}" in
+  "gateway status")
+    if [ -e "$S/gateway" ]; then echo "Gateway active : http://romeo1.example:${FAKE_GATEWAY_PORT}/v1 — arrêt dans 23 h 59 min"
+    else echo "La gateway ne tourne pas (romeollmtool gateway start)."; fi ;;
+  "gateway start") : >"$S/gateway"; echo started ;;
+  "gateway extend") echo extended ;;
+  "gateway show-key") echo test-key ;;
+  "catalog show")
+    f=$HOME/.romeollmtool/configs/$3.yaml
+    [ -f "$f" ] || { echo "Fiche inconnue : $3" >&2; exit 1; }
+    echo "source : $f"; grep -v '^#' "$f" ;;
+  "launch "*)
+    id=$((900000 + $(wc -l <"$S/jobs" 2>/dev/null || echo 0) + 1))
+    echo "$id $2 $(date +%s)" >>"$S/jobs"
+    echo "Job $id soumis ($2)" ;;
+  "stop "*) grep -v "^$2 " "$S/jobs" >"$S/jobs.new"; mv "$S/jobs.new" "$S/jobs" ;;
+  "version "*|"version") echo "romeollmtool 0.0-test" ;;
+  *) echo "fake romeollmtool: $*" >&2; exit 2 ;;
+esac

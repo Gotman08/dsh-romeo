@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Fake ssh for tests/run.sh: control-socket operations succeed, remote commands run here, against
+# the fake romeollmtool and squeue, with FAKE_ROMEO_HOME as the ROMEO home.
+set -u
+op='' master=0 sock='' args=()
+while [ $# -gt 0 ]; do
+  case $1 in
+    -O) op=$2; shift 2 ;;
+    -M) master=1; shift ;;
+    -S) sock=$2; shift 2 ;;
+    -o|-L|-i|-p|-l|-F|-J) shift 2 ;;
+    -n|-f|-N|-q|-T|-t|-tt) shift ;;
+    *) args+=("$1"); shift ;;
+  esac
+done
+ctl=${sock:-$FAKE_ROMEO_STATE/ssh-master}   # the control socket is a plain file here
+case $op in
+  check) [ -e "$ctl" ]; exit ;;
+  exit) rm -f "$ctl"; exit 0 ;;
+  forward|cancel) exit 0 ;;
+esac
+[ "${FAKE_ROMEO_UNREACHABLE:-0}" = 1 ] && { echo "ssh: connect to host: timed out" >&2; exit 255; }
+if [ "$master" = 1 ]; then : >"$ctl"; exit 0; fi
+unset 'args[0]'   # the host
+[ ${#args[@]} -eq 0 ] && exit 0
+HOME=$FAKE_ROMEO_HOME USER=demo PATH=$(dirname "$0"):$PATH bash -c "${args[*]}"

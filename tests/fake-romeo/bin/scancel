@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+grep -v "^$1 " "$FAKE_ROMEO_STATE/jobs" >"$FAKE_ROMEO_STATE/jobs.new"; mv "$FAKE_ROMEO_STATE/jobs.new" "$FAKE_ROMEO_STATE/jobs"

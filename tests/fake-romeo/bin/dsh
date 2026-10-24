@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Fake dsh: records how dsh-romeo started it.
+{ echo "args: $*"; echo "key: ${ROMEO_LLM_KEY:-}"; } >"$FAKE_ROMEO_STATE/dsh-call"

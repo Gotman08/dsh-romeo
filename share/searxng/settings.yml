@@ -1,0 +1,23 @@
+# SearXNG settings for dsh-romeo's web search (install.sh --search copies this file and fills the key).
+use_default_settings: true
+
+general:
+  instance_name: "dsh-romeo"
+
+server:
+  secret_key: "__SECRET__"
+  limiter: false
+  image_proxy: false
+  public_instance: false
+
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json    # dsh asks for JSON
+
+engines:
+  - name: bing
+    disabled: false
+  - name: yahoo
+    disabled: false

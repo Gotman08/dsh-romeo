@@ -123,6 +123,8 @@ DSH_ROMEO_PORT=\${DSH_ROMEO_PORT:-${DSH_ROMEO_PORT:-11318}}
 DSH_ROMEO_EFFORT=\${DSH_ROMEO_EFFORT:-${DSH_ROMEO_EFFORT:-max}}
 # SearXNG for web search (empty: no web search). install.sh --search runs one in Docker.
 DSH_ROMEO_SEARXNG_URL=\${DSH_ROMEO_SEARXNG_URL:-$SEARX}
+# Gateway: standard (romeollmtool's), or fast (no 100-stream cap, affinity across jobs: README, Tuning).
+DSH_ROMEO_GATEWAY=\${DSH_ROMEO_GATEWAY:-${DSH_ROMEO_GATEWAY:-standard}}
 EOF
 ok "written"
 
@@ -166,4 +168,6 @@ ${G}dsh-romeo is installed.${N} Start the model and open dsh:
     dsh-romeo --launch        # one model job (2 nodes, 8 GPUs), about 10 min to load, then the Web UI
     dsh-romeo                 # later, while the job runs
     dsh-romeo --stop          # when you are done: the job uses GPU hours of $PROJECT
+
+Other clients: dsh-romeo --run opencode | codex | claude | aider | python3 ...  (README: Other clients)
 EOF

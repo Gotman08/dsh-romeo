@@ -31,6 +31,7 @@ check() {  # check "name" condition...
   else fail=$((fail + 1)); printf '  FAIL  %s\n' "$name"; printf '%s\n' "$out" | sed 's/^/        | /'; fi
 }
 has() { grep -q -- "$1" <<<"$out"; }
+lacks() { ! grep -q -- "$1" <<<"$out"; }
 run() { out=$("$ROOT/bin/dsh-romeo" "$@" 2>&1); code=$?; }
 
 echo "dsh-romeo offline tests"
@@ -74,12 +75,53 @@ check "overlay: no key written" bash -c "! grep -q test-key '$overlay'"
 check "overlay: no web search by default" bash -c "! grep -q searxng '$overlay'"
 
 run headless "fix the tests"
-check "job running: straight to dsh" bash -c "! grep -q submitted <<<'$out'"
+check "job running: straight to dsh" lacks submitted
 check "headless and its task pass through" grep -q "args: headless --patch .* fix the tests" "$FAKE_ROMEO_STATE/dsh-call"
 
 DSH_ROMEO_SEARXNG_URL=http://127.0.0.1:8888 run
 check "overlay: SearXNG when configured" grep -q 'baseURL: "http://127.0.0.1:8888"' "$overlay"
 check "overlay: SearXNG plugin path" grep -q "name: $ROOT/share/web-search-searxng.mjs" "$overlay"
+
+# Other clients: the endpoint as variables, a summary, any program, codex's flags.
+env_out=$("$ROOT/bin/dsh-romeo" --env 2>/dev/null)
+out=$env_out
+check "--env: base URL" has "export OPENAI_BASE_URL=http://127.0.0.1:$PORT/v1"
+check "--env: key" has "export OPENAI_API_KEY=test-key"
+check "--env: Anthropic endpoint" has "export ANTHROPIC_BASE_URL=http://127.0.0.1:$PORT"
+check "--env: model" has "export DSH_ROMEO_MODEL=dsh-deepseek-v4.1-flash-1m"
+only_exports() { ! grep -v '^export ' <<<"$env_out" | grep -q .; }
+check "--env: stdout holds only exports" only_exports
+evals() { (eval "$env_out" && [ "$OPENAI_API_KEY" = test-key ]); }
+check "--env: eval works" evals
+
+out=$("$ROOT/bin/dsh-romeo" --serve 2>/dev/null)
+check "--serve: base URL" has "base URL   http://127.0.0.1:$PORT/v1"
+check "--serve: model" has "model      dsh-deepseek-v4.1-flash-1m"
+check "--serve: no key printed" lacks test-key
+
+run --run env
+check "--run: OpenAI variables" has "OPENAI_API_BASE=http://127.0.0.1:$PORT/v1"
+check "--run: aider model" has "AIDER_MODEL=openai/dsh-deepseek-v4.1-flash-1m"
+check "--run: opencode config" has "OPENCODE_CONFIG=$DSH_ROMEO_CONFIG_DIR/opencode.json"
+oc=$DSH_ROMEO_CONFIG_DIR/opencode.json
+check "opencode.json: valid JSON" python3 -c "import json, sys; json.load(open(sys.argv[1]))" "$oc"
+check "opencode.json: default model" grep -q '"model": "romeo/dsh-deepseek-v4.1-flash-1m"' "$oc"
+check "opencode.json: key from the environment" grep -q '{env:ROMEO_LLM_KEY}' "$oc"
+check "opencode.json: no key written" bash -c "! grep -q test-key '$oc'"
+
+run --run codex exec "hello"
+check "--run codex: provider" grep -q "arg: model_provider=romeo" "$FAKE_ROMEO_STATE/codex-call"
+check "--run codex: Responses API" grep -q 'wire_api = "responses"' "$FAKE_ROMEO_STATE/codex-call"
+check "--run codex: its own arguments follow" grep -q "arg: hello" "$FAKE_ROMEO_STATE/codex-call"
+check "--run codex: key in its environment" grep -q "ROMEO_LLM_KEY=test-key" "$FAKE_ROMEO_STATE/codex-call"
+
+run --run
+check "--run without a command: says so" has "--run needs a command"
+
+DSH_ROMEO_GATEWAY=fast run headless "fast"
+check "fast gateway: files copied to ROMEO" test -x "$FAKE_ROMEO_HOME/.dsh-romeo/gateway/start.sh"
+check "fast gateway: falls back when it cannot start" has "fast gateway unavailable"
+check "fast gateway: dsh still starts" grep -q "args: headless --patch .* fast" "$FAKE_ROMEO_STATE/dsh-call"
 
 run --status
 check "status: job listed" has "model job 900001 running"
@@ -96,7 +138,7 @@ check "ROMEO unreachable: clear error" has "cannot connect to 'romeo' over SSH"
 
 if [ -n "$REAL_DSH" ]; then
   # The overlay must compose with the real dsh (fresh DSH_HOME, no network needed).
-  DSH_ROMEO_SEARXNG_URL=http://127.0.0.1:8888 run
+  DSH_ROMEO_SEARXNG_URL=http://127.0.0.1:8888 run --launch
   composed=$(cd "$T" && DSH_HOME=$T/dsh-home "$REAL_DSH" --profile headless --patch "$overlay" --dump-config 2>&1)
   out=$composed
   check "real dsh: romeo is the default provider" has "provider: romeo"

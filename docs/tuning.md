@@ -1,0 +1,29 @@
+# Tuning
+
+[README](../README.md) · [Usage](usage.md) · [Other clients](clients.md) · **Tuning** · [How it works](how-it-works.md) · [Troubleshooting](troubleshooting.md) · [Changes](changes.md) · [Development](development.md)
+
+What an A/B study on ROMEO (October 2026, up to 7 jobs and 3584 concurrent requests) kept, and where it is:
+
+| | | Where |
+|---|---|---|
+| Tensor parallelism over 8 GH200 on 2 nodes, no pipeline parallelism | without patches that `romeollmtool` cannot load, the pipeline variants of V4.1 on vLLM 0.31 garble long agent contexts (12 to 18 sessions out of 24) | fiche |
+| DSpark speculative decoding, 3 draft tokens; 32 CPUs per node; `--stream-interval 4` | 66 to 68 % of the drafts accepted in real dsh sessions; +61 % per agent at 16 agents per job and +70 % at 64, against 5 draft tokens and 8 CPUs | fiche |
+| Full 1M context, 256K output, `--gpu-memory-utilization 0.78`, `--language-model-only` | the context the model was trained for; starts on every GH200 | fiche |
+| DeepSeek's sampling (temperature 1.0, top_p 0.95), maximum reasoning by default | `DSH_ROMEO_EFFORT` to change it | fiche, launcher |
+| Several jobs behind one gateway | `dsh-romeo --launch N` | launcher |
+| Fast gateway: no 100-stream cap, session affinity across jobs, longer timeouts, 4 processes | 3584 of 3584 concurrent requests served (the standard gateway: 502 errors beyond about 100 streams); -20 to -28 % wall time and -59 % time to first token late in multi-turn sessions with several jobs | `DSH_ROMEO_GATEWAY=fast` |
+
+With all of them, fast gateway included, 7 jobs served about 530 agents at once at 30 tokens/s each (235 multi-turn agents), against 165 for the first setup.
+
+The fiche is [share/fiches/dsh-deepseek-v4.1-flash-1m.yaml](../share/fiches/dsh-deepseek-v4.1-flash-1m.yaml).
+
+## The fast gateway
+
+`DSH_ROMEO_GATEWAY=fast` starts a second, unmanaged gateway on the login node ([share/gateway](../share/gateway)): `romeollmtool`'s own gateway with a patch loaded at start, the same key and the same jobs, 4 processes sharing the port, 8 hours of life, stopped by `dsh-romeo --stop`. If it cannot start (for example after an update of `romeollmtool`), dsh-romeo says so and uses the standard gateway.
+
+Use it for more than 100 agents at once, or with several jobs (the affinity keeps a session on the job that holds its cache). One job and a few agents do not need it.
+
+## Left out on purpose
+
+- The pipeline-parallel variant with DSpark: more throughput only at saturation, and it needs vLLM patches that `romeollmtool` cannot load.
+- Token savers that rewrite the agent's instructions (Caveman, Ponytail): they change how the agent works, so they are a choice for your own `AGENTS.md`.

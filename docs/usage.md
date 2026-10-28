@@ -107,6 +107,11 @@ by Windows Git, so the same checkout can be read from `/mnt/c/...`.
 
 `--launch` combines with the others: `dsh-romeo --launch --run opencode`. While the model loads, Ctrl-C stops waiting, not the job: run `dsh-romeo` again later.
 
+A first start with an empty CUDA/FlashInfer kernel cache can take longer than
+the timings above: vLLM compiles kernels on the GPU nodes before serving requests.
+The model is ready only after dsh-romeo's one-token request succeeds; the compilation
+progress can be read with `ssh romeo /apps/romeotools/romeollmtool/romeollmtool logs`.
+
 ## Where the agents work
 
 On your computer: only the model runs on ROMEO. In the Web UI, a session works in the workspace chosen above the message box: on first use dsh creates `~/Documents/deepseek-harness/default-workspace`; add your project folder with the button next to *Workspaces*. `dsh-romeo headless` and the other clients work in the current folder.

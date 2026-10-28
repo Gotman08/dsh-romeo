@@ -298,6 +298,8 @@ function Write-DshOverlay {
     # JSON scalars are valid YAML and preserve Windows paths, quotes and spaces.
     $model = ConvertTo-Json -InputObject $script:DshModel -Compress
     $effort = $script:DshSettings.DSH_ROMEO_EFFORT
+    # dsh's internal effort IDs differ from the API value for disabled thinking.
+    if ($effort -eq 'none') { $effort = 'off' }
     $text = @"
 # Written by dsh-romeo at every start: edit config.json instead.
 - id: llm-pi-ai

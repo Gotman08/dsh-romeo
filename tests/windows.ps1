@@ -180,6 +180,13 @@ try {
     Assert-Dsh 'overlay reads output limit' ($overlay -match 'maxTokens: 262144')
     Assert-Dsh 'overlay quotes Windows plugin path' ($overlay -match 'name: "[^"]+web-search-searxng.mjs"')
     Assert-Dsh 'overlay never stores key' ($overlay -notmatch 'test-key')
+    $previousEffort = $script:DshSettings.DSH_ROMEO_EFFORT
+    $script:DshSettings.DSH_ROMEO_EFFORT = 'none'
+    Write-DshOverlay
+    $disabledThinking = Get-Content -LiteralPath $script:DshOverlay -Raw -Encoding UTF8
+    Assert-Dsh 'none uses dsh off provider effort' ($disabledThinking -match '(?m)^\s+reasoning: off$')
+    Assert-Dsh 'none uses dsh off agent effort' ($disabledThinking -match 'reasoningEffort: off')
+    $script:DshSettings.DSH_ROMEO_EFFORT = $previousEffort
     $environment = Get-DshEndpointEnvironment
     $opencode = Get-Content -LiteralPath $environment.OPENCODE_CONFIG -Raw -Encoding UTF8
     Assert-Dsh 'opencode JSON parses' (($opencode | ConvertFrom-Json).model -eq "romeo/$script:DshModel")

@@ -34,6 +34,35 @@ PATH registration; no real account configuration is changed. The workflow in
 `.github/workflows/offline.yml` runs Bash on Linux/macOS and PowerShell 5.1/7 on
 Windows. These tests never connect to ROMEO or submit jobs.
 
+## Live Windows/WSL validation (2026-10-28)
+
+The default `dsh-deepseek-v4.1-flash-1017-1m` fiche was exercised on the real
+ROMEO cluster with RomeoLLMTool 1.2.0, vLLM 0.31.0 and dsh 0.2.1-rc.2.
+One backend job (2 nodes, 8 GPUs, capped at 30 minutes) served both Windows
+and WSL clients. Its cold start included CUDA/FlashInfer compilation.
+
+| Check | Windows PowerShell 5.1 | PowerShell 7 | Ubuntu / WSL2 |
+|---|---|---|---|
+| SSH, gateway status and tunnel | Passed | Passed | Passed |
+| `/models`, real tool call, streamed tool result | Passed | Passed | Passed |
+| `--env` imported without displaying the key | Passed | Covered offline | Passed |
+| dsh headless reads `INPUT.txt` and creates the expected `OUTPUT.txt` | Passed | Not separately run | Passed |
+
+The Windows installer was checked against real SSH with an existing dsh
+executable and isolated configuration/command directories; persistent user PATH
+registration was suppressed for this test. On WSL, a fresh dsh installation
+into a private prefix succeeded as a non-root user, with no `sudo` or npm
+global-prefix change. Generated client configuration was checked for the
+absence of the real gateway key.
+
+These runs exposed two cases now covered by regressions: `gateway status`
+returns exit 1 when stopped, and dsh requires the internal effort ID `off`
+when `DSH_ROMEO_EFFORT=none` (the provider still sends API value `none`).
+The test job was explicitly stopped by its own ID after 19 minutes 12 seconds;
+both test tunnels and the gateway started for the test were closed. Other jobs
+were preserved. Optional Docker/SearXNG and the macOS desktop app were not part
+of this live validation.
+
 - `tests/run.sh`: `bin/dsh-romeo` against `tests/fake-romeo/bin`: a fake `ssh` that runs the remote commands here, fake `romeollmtool`, `squeue`, `scancel` and gateway (`gateway.py`, 503 until a job has "loaded"), and a fake `dsh` and `codex` that record how they were started. When dsh is installed, the overlay is also composed by the real dsh. Then `bash -n` and `shellcheck` on the scripts. No network, no GPU.
 - `tests/clients/openai_sdk.py`: a tool call, then a streamed answer, with the official OpenAI SDK (`pip install openai`).
 - `tests/demo.py`: runs bash in a pseudo-terminal, types `dsh-romeo --launch` and keeps the screen while the model loads; a stand-in `open` first in `PATH` catches the URL dsh web hands to the browser; Playwright's Chromium opens it, types the task in the chat, keeps a screenshot every second until the agent is done, then opens the Trajectory tab and one record. The token of the URL is masked. Needs `pyte`, `Pillow` and `playwright` (`python -m playwright install chromium`).

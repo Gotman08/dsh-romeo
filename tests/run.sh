@@ -123,6 +123,19 @@ check "fast gateway: files copied to ROMEO" test -x "$FAKE_ROMEO_HOME/.dsh-romeo
 check "fast gateway: falls back when it cannot start" has "fast gateway unavailable"
 check "fast gateway: dsh still starts" grep -q "args: headless --patch .* fast" "$FAKE_ROMEO_STATE/dsh-call"
 
+if [ "$(uname)" = Darwin ]; then
+  mkdir -p "$T/home/.dsh/profiles/desktop"
+  printf '%s\n' '- id: my-own' '  config: {}' >"$T/home/.dsh/profiles/desktop/cordis.patch.yml"
+  touch "$FAKE_ROMEO_STATE/app-running"
+  HOME=$T/home run --desktop
+  check "--desktop: opens the app with the key" grep -q "args: -a DeepSeek Harness --env ROMEO_LLM_KEY=test-key" "$FAKE_ROMEO_STATE/open-call"
+  check "--desktop: quits the running app first" grep -q "quit app" "$FAKE_ROMEO_STATE/osascript-call"
+  check "--desktop: overlay in the desktop profile" grep -q "provider: romeo" "$T/home/.dsh/profiles/desktop/cordis.patch.yml"
+  check "--desktop: your own patch kept" grep -q "my-own" "$T/home/.dsh/profiles/desktop/cordis.patch.yml.before-dsh-romeo"
+  FAKE_NO_APP=1 HOME=$T/home run --desktop
+  check "--desktop without the app: says so" has "app is not installed"
+fi
+
 run --status
 check "status: job listed" has "model job 900001 running"
 

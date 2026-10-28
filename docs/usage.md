@@ -35,6 +35,7 @@ Host romeo
 |---|---|
 | `dsh-romeo --launch` | starts the model (one job, 2 nodes, 8 GH200), waits until it answers (8 to 13 min in our tests), opens the dsh Web UI |
 | `dsh-romeo` | opens the Web UI while the job runs |
+| `dsh-romeo --desktop` | opens the DeepSeek Harness desktop app (macOS) on the ROMEO model instead of the Web UI: it writes the provider into the app's `~/.dsh/profiles/desktop/cordis.patch.yml` (a patch of your own there is kept as `cordis.patch.yml.before-dsh-romeo`) and restarts the app if it runs, since it reads the key at start only. Combines with `--launch` |
 | `dsh-romeo headless "run the tests and fix them"` | one task, the answer printed on stdout: for scripts |
 | `dsh-romeo web --port 3000` | any dsh profile and argument pass through |
 | `dsh-romeo --launch 3` | three jobs: the gateway spreads the agents over them |

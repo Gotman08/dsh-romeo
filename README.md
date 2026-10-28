@@ -22,6 +22,8 @@ Then run `dsh-romeo --launch`. To update: `cd ~/dsh-romeo && git pull && ./insta
 |---|---|
 | `dsh-romeo --launch` | starts the model on ROMEO (2 nodes, 8 GH200), waits until it answers, opens the dsh Web UI |
 | `dsh-romeo` | opens the Web UI while the model job runs |
+| `dsh-romeo --desktop` | the [DeepSeek Harness desktop app](https://github.com/deepseek-ai/deepseek-harness/releases) (macOS) instead of the Web UI |
+| `dsh-romeo headless "a task"` | one task, the answer on stdout: for scripts |
 | `dsh-romeo --run opencode` | any other client: `codex`, `claude`, `aider`, `python3 my_agent.py`... |
 | `dsh-romeo --serve` | only the model and the tunnel, for an editor or any OpenAI-compatible tool |
 | `dsh-romeo --status` | the gateway, the model jobs, the tunnel |

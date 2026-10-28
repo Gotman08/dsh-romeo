@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Fake pgrep: the desktop app runs while $FAKE_ROMEO_STATE/app-running exists.
+[ -e "$FAKE_ROMEO_STATE/app-running" ]

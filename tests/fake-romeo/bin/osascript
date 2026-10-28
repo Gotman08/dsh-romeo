@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Fake osascript: "quit app" stops the fake desktop app.
+rm -f "$FAKE_ROMEO_STATE/app-running"; echo "$*" >"$FAKE_ROMEO_STATE/osascript-call"

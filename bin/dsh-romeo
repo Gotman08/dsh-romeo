@@ -4,6 +4,7 @@
 #   dsh-romeo                     open the dsh Web UI (every dsh profile and argument passes through:
 #   dsh-romeo headless "a task"     dsh-romeo web --port 3000, dsh-romeo headless "...")
 #   dsh-romeo --launch [N]        submit N model jobs (default 1), wait for the model, then open dsh
+#   dsh-romeo --desktop           the DeepSeek Harness desktop app (macOS) instead of the Web UI
 #   dsh-romeo --run CMD [ARGS]    any other client instead of dsh: opencode, codex, claude, aider, python...
 #   dsh-romeo --serve             only the model and the tunnel: an OpenAI-compatible endpoint for any tool
 #   dsh-romeo --env               print the endpoint as shell variables: eval "$(dsh-romeo --env)"
@@ -61,7 +62,7 @@ say() { printf '%s\n' "${B}dsh-romeo${N} $*" >&2; }
 note() { printf '%s\n' "          ${D}$*${N}" >&2; }
 die() { printf '%s\n' "${R}dsh-romeo:${N} $*" >&2; exit 1; }
 
-usage() { sed -n '2,14p' "$src" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,15p' "$src" | sed 's/^# \{0,1\}//'; }
 
 # ---------------------------------------------------------------- SSH
 
@@ -286,6 +287,33 @@ run_dsh() {
   exec "${DSH_ROMEO_DSH:-dsh}" "$profile" --patch "$OVERLAY" "$@"
 }
 
+# The DeepSeek Harness desktop app (macOS) runs dsh on its own "desktop" profile and takes no
+# --patch: the overlay goes into that profile's cordis.patch.yml. A patch of your own there is
+# kept once as cordis.patch.yml.before-dsh-romeo.
+DESKTOP_APP=${DSH_ROMEO_DESKTOP_APP:-DeepSeek Harness}
+run_desktop() {
+  [ "$(uname)" = Darwin ] || die "--desktop: the DeepSeek Harness desktop app is for macOS"
+  open -Ra "$DESKTOP_APP" 2>/dev/null || die "the $DESKTOP_APP app is not installed (https://github.com/deepseek-ai/deepseek-harness/releases)"
+  write_overlay
+  local dir=$HOME/.dsh/profiles/desktop
+  local patch=$dir/cordis.patch.yml
+  mkdir -p "$dir"
+  if [ -f "$patch" ] && ! grep -q '^# Written by dsh-romeo' "$patch" && grep -q -v -E '^[[:space:]]*(#|\[\][[:space:]]*$|$)' "$patch"; then
+    [ -e "$patch.before-dsh-romeo" ] || cp "$patch" "$patch.before-dsh-romeo"
+    note "your desktop patch was kept as $patch.before-dsh-romeo"
+  fi
+  cp "$OVERLAY" "$patch"
+  # The app reads its environment at start only: a running copy is quit first (its sessions are kept).
+  if pgrep -qf "/$DESKTOP_APP.app/Contents/MacOS/"; then
+    say "restarting $DESKTOP_APP so it gets the ROMEO key"
+    osascript -e "quit app \"$DESKTOP_APP\"" >/dev/null 2>&1 || true
+    local _
+    for _ in $(seq 1 30); do pgrep -qf "/$DESKTOP_APP.app/Contents/MacOS/" || break; sleep 1; done
+  fi
+  say "opening $DESKTOP_APP ${D}(the tunnel stays open until dsh-romeo --stop)${N}"
+  open -a "$DESKTOP_APP" --env "ROMEO_LLM_KEY=$ROMEO_LLM_KEY"
+}
+
 # ---------------------------------------------------------------- other clients
 
 # The endpoint in the variables that OpenAI- and Anthropic-compatible clients read.
@@ -459,6 +487,7 @@ main() {
   case "${1:-}" in
     --serve) prepare "$launch"; print_serve ;;
     --env) prepare "$launch"; print_env ;;
+    --desktop) prepare "$launch"; run_desktop ;;
     --run)
       shift
       [ $# -gt 0 ] || die "--run needs a command, e.g. dsh-romeo --run opencode"

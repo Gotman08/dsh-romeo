@@ -2,7 +2,9 @@
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh), DeepSeek's coding agent, on your computer, with DeepSeek-V4.1-Flash-1017 running on the GPUs of the [ROMEO](https://romeo.univ-reims.fr/) cluster: one command starts the model, opens the tunnel and opens dsh. The same model serves any other client: opencode, Codex, Claude Code, Aider, your editor.
 
-![dsh-romeo --launch starts DeepSeek-V4.1-Flash on ROMEO and opens the dsh Web UI, where an agent fixes a failing test; then the Trajectory tab of that session](img/dsh-romeo.gif)
+![dsh-romeo --launch starts DeepSeek-V4.1-Flash-1017 on ROMEO and opens the dsh Web UI, where an agent fixes a failing test; then the Trajectory tab of that session](img/dsh-romeo.gif)
+
+The model is DeepSeek's 17 October 2026 release of V4.1-Flash, with its full 1M-token context, on 2 nodes (8 GH200, tensor parallel) with DSpark speculative decoding: the settings an A/B study on ROMEO kept ([Tuning](docs/tuning.md)).
 
 ## Install
 

@@ -94,9 +94,15 @@ try {
 
     # Fake ROMEO remote commands; a real HTTP gateway tests the readiness request.
     $script:gatewayStarted = $false; $script:ficheInstalled = $false; $script:launches = 0
+    $script:remoteUnavailable = $false
     $script:remoteCalls = New-Object 'Collections.Generic.List[string]'
     function Invoke-DshSsh([string]$Command, [string]$InputText = '') {
         $script:remoteCalls.Add($Command)
+        if ($script:remoteUnavailable) {
+            $failure = New-Object InvalidOperationException('SSH transport unavailable')
+            $failure.Data['ExitCode'] = 255
+            throw $failure
+        }
         switch -Regex ($Command) {
             '^true$' { return '' }
             'sacctmgr ' { return "rlt=yes`nr999999|`n" }
@@ -106,7 +112,12 @@ try {
                 if ($Command -match 'configs/' -and $decoded -match 'vllm:') { $script:ficheInstalled = $true }
                 return ''
             }
-            "'gateway' 'status'$" { if ($script:gatewayStarted) { return 'Gateway active: http://romeo.example:11318/v1' }; return 'stopped' }
+            "'gateway' 'status'$" {
+                if ($script:gatewayStarted) { return 'Gateway active: http://romeo.example:11318/v1' }
+                $failure = New-Object InvalidOperationException('Gateway stopped')
+                $failure.Data['ExitCode'] = 1
+                throw $failure
+            }
             "'gateway' 'start'" { $script:gatewayStarted = $true; return 'started' }
             "'gateway' 'extend'" { return 'extended' }
             "'gateway' 'show-key'$" { return 'test-key' }
@@ -142,6 +153,11 @@ try {
     $gatewayProcess = Start-Process -FilePath $python -ArgumentList $gatewayArgs -WindowStyle Hidden -PassThru -RedirectStandardError (Join-Path $temp 'gateway.log')
     for ($i = 0; $i -lt 100; $i++) { if (Test-DshPort $port) { break }; Start-Sleep -Milliseconds 50 }
     if ($gatewayProcess.HasExited) { throw 'fake HTTP gateway exited' }
+    Invoke-DshMain @('--status')
+    Assert-Dsh 'stopped gateway status accepts real CLI exit 1' (-not $script:gatewayStarted)
+    $script:remoteUnavailable = $true
+    Assert-DshThrows 'gateway status preserves SSH transport errors' { Get-DshGatewayUrl } 'transport unavailable'
+    $script:remoteUnavailable = $false
     Assert-DshThrows 'missing fiche has setup guidance' { Invoke-DshMain @('--serve') } 'not found on ROMEO'
     Invoke-DshMain @('--setup')
     Assert-Dsh 'setup uploads fiche with bytes preserved' $script:ficheInstalled

@@ -88,7 +88,11 @@ function Invoke-DshSsh([string]$Command, [string]$InputText = '') {
         if ($InputText) { $process.StandardInput.Write($InputText) }
         $process.StandardInput.Close(); $process.WaitForExit()
         $outputText = $stdout.GetAwaiter().GetResult(); $errorText = $stderr.GetAwaiter().GetResult()
-        if ($process.ExitCode -ne 0) { throw "SSH command failed on '$($script:DshSettings.ROMEO_SSH_HOST)': $errorText" }
+        if ($process.ExitCode -ne 0) {
+            $failure = New-Object InvalidOperationException("SSH command failed on '$($script:DshSettings.ROMEO_SSH_HOST)' (exit $($process.ExitCode)): $errorText")
+            $failure.Data['ExitCode'] = $process.ExitCode
+            throw $failure
+        }
         $outputText.TrimEnd()
     } finally { $process.Dispose() }
 }
@@ -101,7 +105,13 @@ function Invoke-DshRlt([string[]]$Arguments) {
     Invoke-DshSsh (($parts | ForEach-Object { ConvertTo-DshPosixQuote $_ }) -join ' ')
 }
 function Get-DshGatewayUrl {
-    $text = Invoke-DshRlt @('gateway', 'status')
+    try { $text = Invoke-DshRlt @('gateway', 'status') }
+    catch {
+        # romeollmtool returns 1 when no gateway is running. SSH transport errors
+        # (notably 255) must still propagate instead of looking like a stopped gateway.
+        if ($_.Exception.Data['ExitCode'] -eq 1) { return }
+        throw
+    }
     if ($text -match 'https?://[^\s]+:\d+/v1') { $Matches[0] }
 }
 function Get-DshJobs {
@@ -267,7 +277,9 @@ function Initialize-DshEndpoint([int]$Launch = 0) {
         if (-not $script:DshSettings.ROMEO_PROJECT) { throw "no project code: set ROMEO_PROJECT in $script:DshConfigDir/config.json (rerun install.ps1)" }
         for ($i = 0; $i -lt $Launch; $i++) {
             $outputText = Invoke-DshRlt @('launch', $script:DshSettings.DSH_ROMEO_FICHE, '--project-code', $script:DshSettings.ROMEO_PROJECT, '--time', $script:DshSettings.DSH_ROMEO_TIME, '--no-wait')
-            Write-DshMessage "model job submitted: $outputText"
+            $jobLabel = 'model job'
+            if ($outputText -match '(?i)\bjob\s+(\d+)\b') { $jobLabel += " $($Matches[1])" }
+            Write-DshMessage "$jobLabel submitted ($($script:DshSettings.DSH_ROMEO_FICHE), $($script:DshSettings.DSH_ROMEO_TIME))"
         }
     }
     $script:DshKey = (Invoke-DshRlt @('gateway', 'show-key')).Trim()

@@ -10,6 +10,14 @@ python tests/demo.py record                           # records a real run for t
 python tests/demo.py render                           # draws img/dsh-romeo.gif
 ```
 
+For an opt-in check against an already-running real ROMEO model, use
+`dsh-romeo --run python tests/clients/live_smoke.py windows` on Windows or
+`dsh-romeo --run python3 tests/clients/live_smoke.py wsl` inside WSL. This
+standard-library client checks `/models`, an actual tool call with preserved
+arguments, and an SSE streamed answer using the tool result. It prints a JSON
+summary without the API key. It does not submit or cancel a job; requests use
+the model already served by the gateway.
+
 Native Windows, with Node.js and Python on PATH:
 
 ```powershell

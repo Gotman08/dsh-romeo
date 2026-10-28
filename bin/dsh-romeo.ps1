@@ -70,10 +70,20 @@ function Invoke-DshSsh([string]$Command, [string]$InputText = '') {
     $info.UseShellExecute = $false; $info.CreateNoWindow = $true
     $info.RedirectStandardInput = $true; $info.RedirectStandardOutput = $true; $info.RedirectStandardError = $true
     $info.StandardOutputEncoding = [Text.Encoding]::UTF8; $info.StandardErrorEncoding = [Text.Encoding]::UTF8
+    $stdinEncoding = New-Object Text.UTF8Encoding($false)
+    $hasStdinEncoding = $null -ne $info.PSObject.Properties['StandardInputEncoding']
+    if ($hasStdinEncoding) { $info.StandardInputEncoding = $stdinEncoding }
     $process = New-Object Diagnostics.Process
     $process.StartInfo = $info
     try {
-        [void]$process.Start()
+        if ($hasStdinEncoding) { [void]$process.Start() }
+        else {
+            # .NET Framework has no StandardInputEncoding property. It constructs
+            # its stdin writer from Console.InputEncoding, including any BOM.
+            $previousEncoding = [Console]::InputEncoding
+            try { [Console]::InputEncoding = $stdinEncoding; [void]$process.Start() }
+            finally { [Console]::InputEncoding = $previousEncoding }
+        }
         $stdout = $process.StandardOutput.ReadToEndAsync(); $stderr = $process.StandardError.ReadToEndAsync()
         if ($InputText) { $process.StandardInput.Write($InputText) }
         $process.StandardInput.Close(); $process.WaitForExit()

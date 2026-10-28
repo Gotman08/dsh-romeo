@@ -59,10 +59,14 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'failed to build fake ssh.exe' }
     function Get-DshSshPath { $script:fakeSsh }
     $command = 'printf "%s" ''a b''; echo "$USER"; # & | < >'
-    $reported = (Invoke-DshSsh $command 'SGVsbG8=') -split '\r?\n'
+    $inputEncoding = [Console]::InputEncoding
+    try {
+        [Console]::InputEncoding = New-Object Text.UTF8Encoding($true)
+        $reported = (Invoke-DshSsh $command 'SGVsbG8=') -split '\r?\n'
+    } finally { [Console]::InputEncoding = $inputEncoding }
     $received = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($reported[-2]))
     Assert-Dsh 'ssh remote quoting survives native argv' ($received -ceq $command)
-    Assert-Dsh 'ssh stdin reaches remote process' ($reported[-1] -eq 'stdin:U0dWc2JHOD0=')
+    Assert-Dsh 'ssh stdin reaches remote without console BOM' ($reported[-1] -eq 'stdin:U0dWc2JHOD0=')
 
     # Real tunnel process lifecycle, using an unused local port.
     $script:DshGateway = 'http://romeo.example:11318/v1'

@@ -4,10 +4,27 @@
 
 ```bash
 tests/run.sh                                          # offline tests against a fake ROMEO
+bash tests/install.sh                                 # private npm prefix / WSL regression tests
 dsh-romeo --run python3 tests/clients/openai_sdk.py   # the real endpoint through the OpenAI SDK
 python tests/demo.py record                           # records a real run for the GIF (launches a model job)
 python tests/demo.py render                           # draws img/dsh-romeo.gif
 ```
+
+Native Windows, with Node.js and Python on PATH:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\windows.ps1
+pwsh -NoProfile -File tests\windows.ps1
+```
+
+`tests/windows.ps1` compiles `fake-windows-ssh.cs` with the Windows .NET Framework
+compiler. It tests native argv/stdin, a detached loopback tunnel, reuse/cleanup,
+PID identity checks, a real local HTTP gateway, the dsh/opencode overlays,
+environment/exit-code propagation, npm shims, and installer reruns with a fake
+npm that rejects writes outside an explicit prefix. It intercepts persistent
+PATH registration; no real account configuration is changed. The workflow in
+`.github/workflows/offline.yml` runs Bash on Linux/macOS and PowerShell 5.1/7 on
+Windows. These tests never connect to ROMEO or submit jobs.
 
 - `tests/run.sh`: `bin/dsh-romeo` against `tests/fake-romeo/bin`: a fake `ssh` that runs the remote commands here, fake `romeollmtool`, `squeue`, `scancel` and gateway (`gateway.py`, 503 until a job has "loaded"), and a fake `dsh` and `codex` that record how they were started. When dsh is installed, the overlay is also composed by the real dsh. Then `bash -n` and `shellcheck` on the scripts. No network, no GPU.
 - `tests/clients/openai_sdk.py`: a tool call, then a streamed answer, with the official OpenAI SDK (`pip install openai`).

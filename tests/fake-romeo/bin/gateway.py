@@ -35,7 +35,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.authorized():
-            self.reply(200, {"data": [{"id": "dsh-deepseek-v4.1-flash-1m"}] if ready() else []})
+            self.reply(200, {"data": [{"id": "dsh-deepseek-v4.1-flash-1017-1m"}] if ready() else []})
 
     def do_POST(self):
         self.rfile.read(int(self.headers.get("Content-Length", 0)))

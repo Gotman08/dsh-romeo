@@ -41,7 +41,7 @@ check "--version" has "dsh-romeo 0."
 
 run --status
 check "status: gateway stopped, no job, tunnel closed" has "gateway stopped"
-check "status: no model job" has "no model job of dsh-deepseek-v4.1-flash-1m"
+check "status: no model job" has "no model job of dsh-deepseek-v4.1-flash-1017-1m"
 
 run
 check "start before --setup: fiche missing" has "not found on ROMEO. Run: dsh-romeo --setup"
@@ -49,7 +49,7 @@ check "start before --setup: exit 1" test "$code" = 1
 check "start starts the gateway" test -e "$FAKE_ROMEO_STATE/gateway"
 
 run --setup
-check "--setup copies the fiche" test -f "$FAKE_ROMEO_HOME/.romeollmtool/configs/dsh-deepseek-v4.1-flash-1m.yaml"
+check "--setup copies the fiche" test -f "$FAKE_ROMEO_HOME/.romeollmtool/configs/dsh-deepseek-v4.1-flash-1017-1m.yaml"
 
 run
 check "start without a job: says --launch" has "Start one with: dsh-romeo --launch"
@@ -67,7 +67,7 @@ check "--launch: waits, then ready" has "ready"
 check "--launch: dsh web with the overlay" grep -q "args: web --patch $DSH_ROMEO_CONFIG_DIR/dsh.patch.yml" "$FAKE_ROMEO_STATE/dsh-call"
 check "--launch: dsh gets the gateway key" grep -q "key: test-key" "$FAKE_ROMEO_STATE/dsh-call"
 overlay=$DSH_ROMEO_CONFIG_DIR/dsh.patch.yml
-check "overlay: served model of the fiche" grep -q "model: dsh-deepseek-v4.1-flash-1m" "$overlay"
+check "overlay: served model of the fiche" grep -q "model: dsh-deepseek-v4.1-flash-1017-1m" "$overlay"
 check "overlay: 1M context from the fiche" grep -q "contextWindow: 1048576" "$overlay"
 check "overlay: output limit from the fiche" grep -q "maxTokens: 262144" "$overlay"
 check "overlay: tunnel port" grep -q "baseURL: http://127.0.0.1:$PORT/v1" "$overlay"
@@ -88,7 +88,7 @@ out=$env_out
 check "--env: base URL" has "export OPENAI_BASE_URL=http://127.0.0.1:$PORT/v1"
 check "--env: key" has "export OPENAI_API_KEY=test-key"
 check "--env: Anthropic endpoint" has "export ANTHROPIC_BASE_URL=http://127.0.0.1:$PORT"
-check "--env: model" has "export DSH_ROMEO_MODEL=dsh-deepseek-v4.1-flash-1m"
+check "--env: model" has "export DSH_ROMEO_MODEL=dsh-deepseek-v4.1-flash-1017-1m"
 only_exports() { ! grep -v '^export ' <<<"$env_out" | grep -q .; }
 check "--env: stdout holds only exports" only_exports
 evals() { (eval "$env_out" && [ "$OPENAI_API_KEY" = test-key ]); }
@@ -96,16 +96,16 @@ check "--env: eval works" evals
 
 out=$("$ROOT/bin/dsh-romeo" --serve 2>/dev/null)
 check "--serve: base URL" has "base URL   http://127.0.0.1:$PORT/v1"
-check "--serve: model" has "model      dsh-deepseek-v4.1-flash-1m"
+check "--serve: model" has "model      dsh-deepseek-v4.1-flash-1017-1m"
 check "--serve: no key printed" lacks test-key
 
 run --run env
 check "--run: OpenAI variables" has "OPENAI_API_BASE=http://127.0.0.1:$PORT/v1"
-check "--run: aider model" has "AIDER_MODEL=openai/dsh-deepseek-v4.1-flash-1m"
+check "--run: aider model" has "AIDER_MODEL=openai/dsh-deepseek-v4.1-flash-1017-1m"
 check "--run: opencode config" has "OPENCODE_CONFIG=$DSH_ROMEO_CONFIG_DIR/opencode.json"
 oc=$DSH_ROMEO_CONFIG_DIR/opencode.json
 check "opencode.json: valid JSON" python3 -c "import json, sys; json.load(open(sys.argv[1]))" "$oc"
-check "opencode.json: default model" grep -q '"model": "romeo/dsh-deepseek-v4.1-flash-1m"' "$oc"
+check "opencode.json: default model" grep -q '"model": "romeo/dsh-deepseek-v4.1-flash-1017-1m"' "$oc"
 check "opencode.json: key from the environment" grep -q '{env:ROMEO_LLM_KEY}' "$oc"
 check "opencode.json: no key written" bash -c "! grep -q test-key '$oc'"
 

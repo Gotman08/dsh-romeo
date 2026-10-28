@@ -7,15 +7,17 @@ What an A/B study on ROMEO (October 2026, up to 7 jobs and 3584 concurrent reque
 | | | Where |
 |---|---|---|
 | Tensor parallelism over 8 GH200 on 2 nodes, no pipeline parallelism | without patches that `romeollmtool` cannot load, the pipeline variants of V4.1 on vLLM 0.31 garble long agent contexts (12 to 18 sessions out of 24) | fiche |
-| DSpark speculative decoding, 3 draft tokens; 32 CPUs per node; `--stream-interval 4` | 66 to 68 % of the drafts accepted in real dsh sessions; +61 % per agent at 16 agents per job and +70 % at 64, against 5 draft tokens and 8 CPUs | fiche |
-| Full 1M context, 256K output, `--gpu-memory-utilization 0.78`, `--language-model-only` | the context the model was trained for; starts on every GH200 | fiche |
+| DSpark speculative decoding, 2 draft tokens with the 1017 weights (3 with September's); 32 CPUs per node; `--stream-interval 4` | +61 % per agent at 16 agents per job and +70 % at 64, against 5 draft tokens and 8 CPUs; on 1017, k=2 beats k=3 by 3 to 9 % and k=4 loses up to 21 % | fiche |
+| Full 1M context, 256K output, `--gpu-memory-utilization 0.82`, `--language-model-only` | the context the model was trained for; 6.5M tokens of KV cache (4.7M at 0.78) and still starts on GH200s with only 77-80 GiB free | fiche |
 | DeepSeek's sampling (temperature 1.0, top_p 0.95), maximum reasoning by default | `DSH_ROMEO_EFFORT` to change it | fiche, launcher |
 | Several jobs behind one gateway | `dsh-romeo --launch N` | launcher |
 | Fast gateway: no 100-stream cap, session affinity across jobs, longer timeouts, 4 processes | 3584 of 3584 concurrent requests served (the standard gateway: 502 errors beyond about 100 streams); -20 to -28 % wall time and -59 % time to first token late in multi-turn sessions with several jobs | `DSH_ROMEO_GATEWAY=fast` |
 
 With all of them, fast gateway included, 7 jobs served about 530 agents at once at 30 tokens/s each (235 multi-turn agents), against 165 for the first setup.
 
-The fiche is [share/fiches/dsh-deepseek-v4.1-flash-1m.yaml](../share/fiches/dsh-deepseek-v4.1-flash-1m.yaml).
+Tried on the 1017 weights (2026-10-28) and left out: data parallelism over 2 x TP4 with expert parallelism (+28 % on 128 independent requests, but -23 % output and 3x the late time to first token on 42 multi-turn agent sessions, since each data-parallel rank has its own prefix cache), `--max-num-batched-tokens` 16K or 32K (+3 %, half the KV cache), vLLM 0.32.0 (its humming kernels fail to compile on SM90).
+
+The fiche is [share/fiches/dsh-deepseek-v4.1-flash-1017-1m.yaml](../share/fiches/dsh-deepseek-v4.1-flash-1017-1m.yaml).
 
 ## The fast gateway
 

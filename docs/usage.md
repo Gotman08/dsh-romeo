@@ -63,7 +63,7 @@ On your computer: only the model runs on ROMEO. In the Web UI, a session works i
 |---|---|---|
 | `ROMEO_PROJECT` | asked | Slurm project code charged for the model jobs |
 | `ROMEO_SSH_HOST` | `romeo` | ssh alias of a ROMEO login node |
-| `DSH_ROMEO_FICHE` | `dsh-deepseek-v4.1-flash-1m` | `romeollmtool` fiche of the model; `deepseek-v4.1-flash-vllm` is ROMEO's validated one (1 node, 262K context, longer to load) |
+| `DSH_ROMEO_FICHE` | `dsh-deepseek-v4.1-flash-1017-1m` | `romeollmtool` fiche of the model; `deepseek-v4.1-flash-vllm` is ROMEO's validated one (1 node, 262K context, longer to load) |
 | `DSH_ROMEO_TIME` | `08:00:00` | duration of a model job (24 h at most) |
 | `DSH_ROMEO_EFFORT` | `max` | default reasoning effort: `none`, `low`, `high`, `max` |
 | `DSH_ROMEO_PORT` | `11318` | local port of the tunnel |

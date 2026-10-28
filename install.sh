@@ -43,6 +43,8 @@ ask() {  # ask "question" default -> answer (the default without a terminal or w
 # Settings of a previous install are kept unless given again.
 # shellcheck source=/dev/null
 [ -f "$CONFIG_DIR/config" ] && . "$CONFIG_DIR/config"
+# The September weights' fiche, the default before 2026-10-28: move to the 1017 one.
+[ "${DSH_ROMEO_FICHE:-}" = dsh-deepseek-v4.1-flash-1m ] && DSH_ROMEO_FICHE=dsh-deepseek-v4.1-flash-1017-1m
 HOST=${HOST:-${ROMEO_SSH_HOST:-romeo}}
 PROJECT=${PROJECT:-${ROMEO_PROJECT:-}}
 
@@ -112,9 +114,9 @@ cat >"$CONFIG_DIR/config" <<EOF
 # dsh-romeo settings (sourced by bin/dsh-romeo). A variable set in the environment wins.
 ROMEO_SSH_HOST=\${ROMEO_SSH_HOST:-$HOST}
 ROMEO_PROJECT=\${ROMEO_PROJECT:-$PROJECT}
-# romeollmtool fiche of the model: dsh-deepseek-v4.1-flash-1m (2 nodes, 1M context, the fastest)
+# romeollmtool fiche of the model: dsh-deepseek-v4.1-flash-1017-1m (2 nodes, 1M context, the fastest)
 # or deepseek-v4.1-flash-vllm (ROMEO's validated fiche: 1 node, 262K context, slower to load).
-DSH_ROMEO_FICHE=\${DSH_ROMEO_FICHE:-${DSH_ROMEO_FICHE:-dsh-deepseek-v4.1-flash-1m}}
+DSH_ROMEO_FICHE=\${DSH_ROMEO_FICHE:-${DSH_ROMEO_FICHE:-dsh-deepseek-v4.1-flash-1017-1m}}
 # Model job duration (HH:MM:SS, at most 24:00:00). The job is billed while it runs: --stop it.
 DSH_ROMEO_TIME=\${DSH_ROMEO_TIME:-${DSH_ROMEO_TIME:-08:00:00}}
 # Local port of the tunnel to the gateway.

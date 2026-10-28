@@ -26,7 +26,7 @@ Then declare an OpenAI-compatible provider (Continue, Cline, Zed, Cursor, ...) w
 | | |
 |---|---|
 | base URL | `http://127.0.0.1:11318/v1` (Anthropic-compatible tools: `http://127.0.0.1:11318`) |
-| model | `dsh-deepseek-v4.1-flash-1m` |
+| model | `dsh-deepseek-v4.1-flash-1017-1m` |
 | key | the value of `$OPENAI_API_KEY` after `eval "$(dsh-romeo --env)"` |
 
 The tunnel stays open until `dsh-romeo --stop`. After your computer slept, run `dsh-romeo --serve` again.
@@ -37,9 +37,9 @@ The tunnel stays open until `dsh-romeo --stop`. After your computer slept, run `
 |---|---|
 | `OPENAI_BASE_URL`, `OPENAI_API_BASE`, `DSH_ROMEO_BASE_URL` | `http://127.0.0.1:11318/v1` |
 | `OPENAI_API_KEY`, `ROMEO_LLM_KEY`, `ANTHROPIC_AUTH_TOKEN` | the gateway's key |
-| `DSH_ROMEO_MODEL`, `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL`, `ANTHROPIC_SMALL_FAST_MODEL` | the served model, `dsh-deepseek-v4.1-flash-1m` |
+| `DSH_ROMEO_MODEL`, `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL`, `ANTHROPIC_SMALL_FAST_MODEL` | the served model, `dsh-deepseek-v4.1-flash-1017-1m` |
 | `ANTHROPIC_BASE_URL` | `http://127.0.0.1:11318` |
-| `AIDER_MODEL` | `openai/dsh-deepseek-v4.1-flash-1m` |
+| `AIDER_MODEL` | `openai/dsh-deepseek-v4.1-flash-1017-1m` |
 | `OPENCODE_CONFIG` | `~/.config/dsh-romeo/opencode.json` |
 | `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` | `1` |
 
@@ -52,7 +52,7 @@ On 2026-10-25, against one model job, each client was asked to run the tests of 
 | dsh | 0.2.1-rc.2 | fixed, tests pass (Web UI and headless) |
 | opencode | 1.19.4 | fixed, tests pass |
 | Codex CLI | 0.143.0 | fixed, tests pass (provider `romeo`, Responses API) |
-| Claude Code | 2.1.197 | fixed, tests pass (10 turns, only `dsh-deepseek-v4.1-flash-1m` used) |
+| Claude Code | 2.1.197 | fixed, tests pass (10 turns, only `dsh-deepseek-v4.1-flash-1017-1m` used) |
 | Aider | 0.86.2 | fixed, tests pass |
 | OpenAI Python SDK | 3.37.0 | a tool call, then a streamed answer ([tests/clients/openai_sdk.py](../tests/clients/openai_sdk.py)) |
 

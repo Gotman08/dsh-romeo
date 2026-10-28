@@ -1,27 +1,40 @@
 # ==============================================================================
-# DeepSeek-V4.1-Flash for DeepSeek Harness: vLLM, 2 nodes (8 GH200), 1M context
+# DeepSeek-V4.1-Flash-1017 for DeepSeek Harness: vLLM, 2 nodes (8 GH200), 1M context
 # ==============================================================================
 # romeollmtool fiche installed by dsh-romeo in ~/.romeollmtool/configs.
 #
-# Same model and engine as the catalog fiche deepseek-v4.1-flash-vllm (1 node,
-# 262K context), tuned for coding agents:
+# DeepSeek-V4.1-Flash-1017 (17 October 2026), the update of V4.1-Flash: same
+# architecture and config.json, new weights. Read from ROMEO's shared storage
+# (the unsloth copy of the original FP8/FP4 weights; deepseek-ai/ only has the
+# September V4.1-Flash). vLLM renders the prompts with its own deepseek_v41
+# encoder, so the chat_template.jinja that unsloth added is not used.
+#
+# Same engine as the catalog fiche deepseek-v4.1-flash-vllm (1 node, 262K
+# context), tuned for coding agents:
 # - tensor parallelism over 8 GPUs on 2 nodes, no pipeline parallelism (the
 #   pipeline variants of V4.1 on vLLM 0.31 corrupt long agent contexts);
 # - the full 1,048,576-token context and 256K tokens of output;
-# - DSpark speculative decoding (3 draft tokens);
+# - DSpark speculative decoding, 2 draft tokens (the 1017 weights accept a bit
+#   less than September's: k=2 beats k=3 by 3-9 %, k=4 loses up to 21 %);
 # - 32 CPUs per node and --stream-interval 4 for many agents at once.
-# Measured on ROMEO (October 2026): about 500 agents at once at 30 tokens/s
-# each on 7 replicas (one job = one replica).
+# Measured on ROMEO with the September weights (October 2026): about 500 agents
+# at once at 30 tokens/s each on 7 replicas (one job = one replica).
 #
-# gpu-memory-utilization 0.78: on GH200 only 77-80 GiB are sometimes free at
-# start (host pages on the HBM); 0.85 then fails.
+# gpu-memory-utilization 0.82 (77.9 GiB): on GH200 only 77-80 GiB are sometimes
+# free at start (host pages on the HBM), so 0.85 can fail; 0.82 still fits and
+# gives 6.5M tokens of KV cache instead of 4.7M at 0.78.
+# Tried on ROMEO (2026-10-28) and left out: DP2 x TP4 + expert parallelism
+# (+28 % on independent requests, but -23 % on multi-turn agent sessions: each
+# DP rank has its own prefix cache), --max-num-batched-tokens 16K/32K (+3 %,
+# but half the KV cache), vLLM 0.32.0 (its humming kernels fail to compile on
+# SM90).
 # --language-model-only: text only, and it keeps the memory profiling at 1M
 # away from the vision path.
 # DeepSeek's sampling: temperature 1.0, top_p 0.95.
 # ==============================================================================
 
-id: dsh-deepseek-v4.1-flash-1m
-display_name: "DeepSeek-V4.1-Flash for dsh, 2 nodes TP8 + DSpark, 1M context"
+id: dsh-deepseek-v4.1-flash-1017-1m
+display_name: "DeepSeek-V4.1-Flash-1017 for dsh, 2 nodes TP8 + DSpark k=2, 1M context"
 verified: experimental
 verified_note: "tuned for DeepSeek Harness agents (dsh-romeo)"
 engine: vllm
@@ -53,15 +66,15 @@ slurm:
 
 vllm:
   version: "0.31.0"
-  model: "deepseek-ai/DeepSeek-V4.1-Flash"
-  served_model_name: "dsh-deepseek-v4.1-flash-1m"
+  model: "/gpfs/scratch/romeotools/llmstorage/unsloth/DeepSeek-V4.1-Flash-1017"
+  served_model_name: "dsh-deepseek-v4.1-flash-1017-1m"
   tensor_parallel_size: 8
   pipeline_parallel_size: 1
   extra_args:
     - "--disable-custom-all-reduce"
     - "--language-model-only"
     - "--gpu-memory-utilization"
-    - "0.78"
+    - "0.82"
     - "--max-model-len"
     - "1048576"
     - "--enable-auto-tool-choice"
@@ -72,7 +85,7 @@ vllm:
     - "--stream-interval"
     - "4"
     - "--speculative-config"
-    - '{"method":"dspark","num_speculative_tokens":3}'
+    - '{"method":"dspark","num_speculative_tokens":2}'
 
 generation:
   temperature: 1.0
